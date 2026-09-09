@@ -1,15 +1,84 @@
-def parse_single_file(uploaded_file):
-    file_name = uploaded_file.name.lower()
-    
-    # อ่านไฟล์ดิบ
-    if file_name.endswith('.csv'):
-        raw_df = pd.read_csv(uploaded_file, header=None, low_memory=False)
-    elif file_name.endswith('.xls'):
-        raw_df = pd.read_excel(uploaded_file, header=None, engine='xlrd')
-    else:
-        raw_df = pd.read_excel(uploaded_file, header=None, engine='openpyxl')
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import streamlit as st
+import re
 
-    # ค้นหาแถวเริ่มต้นของข้อมูลตัวเลข (หาแถวที่เริ่มมี Date/Time)
+# 1. ตั้งค่า Page Config และบังคับธีม Dark Mode ถาวรที่ระดับ Root
+st.set_page_config(
+    page_title="Industrial Furnace Monitor",
+    page_icon="🏭",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+st.markdown("""
+    <style>
+        /* บังคับพื้นหลังหน้าเว็บทั้งหมดเป็น Dark Mode ถาวร ป้องกันหน้าจอขาว */
+        html, body, .stApp, [data-testid="stAppViewContainer"] {
+            background-color: #0e1117 !important;
+            color: #ffffff !important;
+        }
+        [data-testid="stSidebar"] {
+            background-color: #161b22 !important;
+        }
+        .stMarkdown, h1, h2, h3, p, span, label {
+            color: #ffffff !important;
+        }
+
+        /* ตกแต่งกล่อง File Uploader ให้ชัดเจน */
+        [data-testid="stFileUploader"] {
+            background-color: #21262d !important;
+            border: 1.5px solid #F0B90B !important;
+            border-radius: 8px !important;
+            padding: 10px !important;
+        }
+        [data-testid="stFileUploader"] section {
+            background-color: #1c2128 !important;
+            border: 1px dashed #F0B90B !important;
+            border-radius: 6px !important;
+        }
+        [data-testid="stFileUploader"] section div, 
+        [data-testid="stFileUploader"] section span,
+        [data-testid="stFileUploader"] section small {
+            color: #e6edf3 !important;
+        }
+        [data-testid="stFileUploader"] button {
+            background-color: #30363d !important;
+            color: #ffffff !important;
+            border: 1px solid #F0B90B !important;
+            font-weight: bold !important;
+        }
+        [data-testid="stFileUploader"] button:hover {
+            background-color: #F0B90B !important;
+            color: #000000 !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+# แสดง Title เสมอ
+st.title("🏭 Real-Time Industrial Furnace Monitor")
+
+# 2. ฟังก์ชันอ่านไฟล์อย่างปลอดภัย (มีระบบ Engine Fallback)
+def read_excel_safe(uploaded_file):
+    file_name = uploaded_file.name.lower()
+    if file_name.endswith('.csv'):
+        return pd.read_csv(uploaded_file, header=None, low_memory=False)
+    
+    # ลองใช้ openpyxl หากล้มเหลวให้ลอง xlrd หรืออ่านธรรมดา
+    try:
+        return pd.read_excel(uploaded_file, header=None, engine='openpyxl')
+    except Exception:
+        try:
+            return pd.read_excel(uploaded_file, header=None, engine='xlrd')
+        except Exception:
+            return pd.read_excel(uploaded_file, header=None)
+
+# 3. ฟังก์ชันสแกนและดึงข้อมูลอัจฉริยะ (กัน Float/NaN Error)
+def parse_single_file(uploaded_file):
+    raw_df = read_excel_safe(uploaded_file)
+
+    # หาแถวเริ่มต้นของข้อมูลวัน-เวลา
     data_start_row = 28
     for r in range(min(50, len(raw_df))):
         val_str = str(raw_df.iloc[r, 0])
@@ -20,13 +89,12 @@ def parse_single_file(uploaded_file):
     header_df = raw_df.iloc[:data_start_row].copy()
     data_df = raw_df.iloc[data_start_row:].copy().reset_index(drop=True)
 
-    # ฟังก์ชันสแกนหา Index คอลัมน์ (แก้ไขจุดที่เกิด Error โดยเติม .fillna('') และ str())
+    # ค้นหา Index คอลัมน์แบบปลอดภัย
     def scan_channel_col(ch_num):
         target_patterns = [f"CH{ch_num:03d}", f"CH{ch_num:02d}", f"CH{ch_num}"]
         matched_cols = []
         
         for col in range(header_df.shape[1]):
-            # แปลงค่าทุกช่องในคอลัมน์เป็น String และแทนที่ NaN ด้วยข้อความว่าง
             col_cells = header_df[col].fillna('').astype(str).tolist()
             col_text = " ".join([str(cell) for cell in col_cells]).upper()
             
@@ -39,7 +107,6 @@ def parse_single_file(uploaded_file):
         if len(matched_cols) == 1:
             return matched_cols[0]
             
-        # ถ้ามีหลายคอลัมน์ (MIN/MAX) ให้เลือกคอลัมน์ที่มีคำว่า MAX
         for col in matched_cols:
             col_cells = header_df[col].fillna('').astype(str).tolist()
             col_text = " ".join([str(cell) for cell in col_cells]).upper()
@@ -100,3 +167,189 @@ def parse_single_file(uploaded_file):
     mapping_info["DEW POINT (CH20)"] = f"Col {c20}" if c20 is not None else "Not Found"
 
     return df.dropna(subset=["DateTime"]), mapping_info
+
+# ฟังก์ชันประมวลผลหลายไฟล์
+@st.cache_data
+def process_multiple_files(uploaded_files):
+    combined_dfs = []
+    logs = {}
+    for file in uploaded_files:
+        single_df, mapping = parse_single_file(file)
+        combined_dfs.append(single_df)
+        logs[file.name] = mapping
+    
+    full_df = pd.concat(combined_dfs, ignore_index=True)
+    full_df = full_df.drop_duplicates(subset=["DateTime"]).sort_values("DateTime").reset_index(drop=True)
+    return full_df, logs
+
+# 4. ฟังก์ชันตกแต่งสไตล์กราฟ
+def apply_industrial_style(fig, y_title, y_range=None, is_dual_axis=False):
+    layout_args = dict(
+        template="plotly_dark",
+        plot_bgcolor="#161b22",
+        paper_bgcolor="#0e1117",
+        hovermode="x unified",
+        showlegend=True,
+        legend=dict(
+            font=dict(color="#FFFFFF", size=12, family="Arial Bold"),
+            bgcolor="rgba(27, 31, 36, 0.95)",
+            bordercolor="#F0B90B",
+            borderwidth=1.5,
+            orientation="v",
+            yanchor="top",
+            y=1,
+            xanchor="left",
+            x=1.02
+        ),
+        xaxis=dict(
+            title=dict(text="Absolute Time [Date & Time]", font=dict(color="#FFFFFF", size=12)),
+            tickfont=dict(color="#CCCCCC", size=10),
+            showgrid=True,
+            gridcolor="rgba(255,255,255,0.08)",
+            linecolor="#555555",
+            type="date",
+        ),
+        yaxis=dict(
+            title=dict(text=y_title, font=dict(color="#FFFFFF", size=12)),
+            tickfont=dict(color="#CCCCCC", size=10),
+            showgrid=True,
+            gridcolor="rgba(255,255,255,0.08)",
+            zeroline=False,
+            linecolor="#555555",
+        ),
+        height=420,
+        margin=dict(l=60, r=180, t=30, b=40),
+    )
+    if y_range and not is_dual_axis:
+        layout_args["yaxis"]["range"] = y_range
+        
+    fig.update_layout(**layout_args)
+
+# ส่วน Sidebar อัปโหลดไฟล์
+st.sidebar.header("📁 เมนูอัปโหลดข้อมูล")
+uploaded_files = st.sidebar.file_uploader(
+    "อัปโหลดไฟล์ Yokogawa (.csv, .xlsx, .xls) ได้มากกว่า 1 ไฟล์", 
+    type=["csv", "xlsx", "xls"],
+    accept_multiple_files=True
+)
+
+# 5. ส่วนแสดงผลหลัก
+if uploaded_files:
+    try:
+        raw_df, channel_logs = process_multiple_files(uploaded_files)
+        st.sidebar.success(f"รวมข้อมูลสำเร็จ {len(uploaded_files)} ไฟล์ ({len(raw_df)} แถว)")
+
+        with st.sidebar.expander("🔍 ตรวจสอบการสแกนจับคู่คอลัมน์"):
+            st.json(channel_logs)
+
+        st.sidebar.markdown("---")
+        st.sidebar.header("🎛️ Dynamic Controls")
+        
+        min_time = raw_df["DateTime"].min().to_pydatetime()
+        max_time = raw_df["DateTime"].max().to_pydatetime()
+        
+        selected_time = st.sidebar.slider(
+            "⏱️ ช่วงเวลา:",
+            min_value=min_time,
+            max_value=max_time,
+            value=(min_time, max_time),
+            format="MM-DD HH:mm"
+        )
+        
+        df = raw_df[(raw_df["DateTime"] >= selected_time[0]) & (raw_df["DateTime"] <= selected_time[1])].copy()
+
+        st.sidebar.subheader("📊 เลือกกลุ่มกราฟ")
+        show_g1 = st.sidebar.checkbox("1. Top Zone Temp (CH1-7)", value=True)
+        show_g2 = st.sidebar.checkbox("2. Bottom Zone Temp (CH8-14)", value=True)
+        show_g3 = st.sidebar.checkbox("3. Dryer Temp (CH16-17)", value=True)
+        show_g4 = st.sidebar.checkbox("4. O2 & N2 Flow (CH15, CH18, CH19)", value=True)
+        show_g5 = st.sidebar.checkbox("5. Dew Point (CH20)", value=True)
+
+        if not df.empty:
+            latest = df.iloc[-1]
+            st.markdown("### 📌 ค่าล่าสุดในระบบ (Latest Readings)")
+            col1, col2, col3, col4, col5 = st.columns(5)
+            col1.metric("Top Zone #1", f"{latest['Top Zone #1']:.1f} °C" if pd.notna(latest['Top Zone #1']) else "N/A")
+            col2.metric("Bottom Zone #1", f"{latest['Bottom Zone #1']:.1f} °C" if pd.notna(latest['Bottom Zone #1']) else "N/A")
+            col3.metric("Dryer #1", f"{latest['Dryer #1']:.1f} °C" if pd.notna(latest['Dryer #1']) else "N/A")
+            col4.metric("Exit O2 (CH15)", f"{latest['EXIT O2']:.1f} ppm" if pd.notna(latest['EXIT O2']) else "N/A")
+            col5.metric("Dew Point (CH20)", f"{latest['DEW POINT']:.1f} °Cdp" if pd.notna(latest['DEW POINT']) else "N/A")
+            st.markdown("---")
+
+        if show_g1:
+            st.subheader("1. Brazing zone Top #1-#7 (CH001-CH007)")
+            fig1 = go.Figure()
+            for i in range(1, 8):
+                fig1.add_trace(go.Scatter(x=df["DateTime"], y=df[f"Top Zone #{i}"], name=f"Top Z#{i} (CH{i:03d})", mode="lines", line=dict(width=2)))
+            apply_industrial_style(fig1, "Temperature (°C)", y_range=[300, 650])
+            st.plotly_chart(fig1, use_container_width=True)
+
+        if show_g2:
+            st.subheader("2. Brazing zone Bottom #1-#7 (CH008-CH014)")
+            fig2 = go.Figure()
+            for i in range(1, 8):
+                ch_num = 7 + i
+                fig2.add_trace(go.Scatter(x=df["DateTime"], y=df[f"Bottom Zone #{i}"], name=f"Bottom Z#{i} (CH{ch_num:03d})", mode="lines", line=dict(width=2)))
+            apply_industrial_style(fig2, "Temperature (°C)", y_range=[300, 650])
+            st.plotly_chart(fig2, use_container_width=True)
+
+        if show_g3:
+            st.subheader("3. Dryer #1 & #2 (CH016 & CH017)")
+            fig3 = go.Figure()
+            fig3.add_trace(go.Scatter(x=df["DateTime"], y=df["Dryer #1"], name="Dryer #1 (CH016)", mode="lines", line=dict(width=2)))
+            fig3.add_trace(go.Scatter(x=df["DateTime"], y=df["Dryer #2"], name="Dryer #2 (CH017)", mode="lines", line=dict(width=2)))
+            apply_industrial_style(fig3, "Temperature (°C)", y_range=[0, 400])
+            st.plotly_chart(fig3, use_container_width=True)
+
+        if show_g4:
+            st.subheader("4. ppmO2 Entry/Exit & N2 Flow (CH015, CH018, CH019)")
+            fig4 = make_subplots(specs=[[{"secondary_y": True}]])
+            fig4.add_trace(go.Scatter(x=df["DateTime"], y=df["ENTRANCE O2"], name="ENTRANCE O2 (CH019)", mode="lines", line=dict(width=2)), secondary_y=False)
+            fig4.add_trace(go.Scatter(x=df["DateTime"], y=df["EXIT O2"], name="EXIT O2 (CH015)", mode="lines", line=dict(width=2)), secondary_y=False)
+            fig4.add_trace(go.Scatter(x=df["DateTime"], y=df["N2 Flow"], name="N2 Flow (CH018)", mode="lines", line=dict(color="#ff7f0e", width=2)), secondary_y=True)
+            
+            apply_industrial_style(fig4, "Oxygen Level (ppm)", is_dual_axis=True)
+            fig4.update_layout(
+                yaxis=dict(range=[0, 200], title="Oxygen Level (ppm) [0-200]", showgrid=True, gridcolor="rgba(255,255,255,0.08)"),
+                yaxis2=dict(title="N2 Flow Rate (Free Scale)", showgrid=False, overlaying="y", side="right", linecolor="#ff7f0e")
+            )
+            st.plotly_chart(fig4, use_container_width=True)
+
+        if show_g5:
+            st.subheader("5. Dew point 'Cdp (CH020)")
+            fig5 = go.Figure()
+            fig5.add_trace(go.Scatter(x=df["DateTime"], y=df["DEW POINT"], name="Dew Point (CH020)", mode="lines", line=dict(color="#00ecff", width=2)))
+            apply_industrial_style(fig5, "Dew Point (°Cdp)", y_range=[10, -100])
+            st.plotly_chart(fig5, use_container_width=True)
+
+        with st.expander("📋 ตรวจสอบและดาวน์โหลดตารางข้อมูลรวมเรียงตามเวลา"):
+            st.dataframe(df)
+            csv_data = df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 ดาวน์โหลดข้อมูลที่รวมกันแล้วเป็น CSV",
+                data=csv_data,
+                file_name="combined_furnace_data.csv",
+                mime="text/csv"
+            )
+
+    except Exception as e:
+        st.error(f"❌ เกิดข้อผิดพลาดในการประมวลผลไฟล์: {e}")
+
+else:
+    # แสดง Welcome Page มืด ป้องกันหน้าจอว่างเปล่า
+    st.info("👈 กรุณาเลือกอัปโหลดไฟล์ (.csv หรือ .xlsx) ที่เมนูด้านซ้าย สามารถเลือกอัปโหลดได้มากกว่า 1 ไฟล์")
+    
+    st.markdown("""
+        <div style="background-color: #161b22; padding: 25px; border-radius: 10px; border: 1px solid #30363d;">
+            <h3 style="color: #F0B90B !important;">📌 โครงสร้าง Channel ที่เปิดใช้งาน:</h3>
+            <ul>
+                <li><b>CH001 - CH007:</b> Top Zone Temp #1 - #7</li>
+                <li><b>CH008 - CH014:</b> Bottom Zone Temp #1 - #7</li>
+                <li><b>CH015:</b> EXIT O2 (แกนซ้าย Scale 0-200 ppm)</li>
+                <li><b>CH016 - CH017:</b> Dryer #1 & Dryer #2</li>
+                <li><b>CH018:</b> N2 Flow Rate (แกนขวา Free scale อยู่กราฟเดียวกับ O2)</li>
+                <li><b>CH019:</b> ENTRANCE O2 (แกนซ้าย Scale 0-200 ppm)</li>
+                <li><b>CH020:</b> DEW POINT (Scale 10 ถึง -100 °Cdp กราฟอิสระ)</li>
+            </ul>
+        </div>
+    """, unsafe_allow_html=True)
