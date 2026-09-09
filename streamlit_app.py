@@ -268,7 +268,6 @@ if uploaded_files:
         if show_g1:
             st.subheader("1. Brazing zone Top #1-#7 (CH001-CH007)")
             fig1 = go.Figure()
-            # กำหนดสีเฉพาะสำหรับ Top Zone Z#1 ถึง Z#7 ตามภาพฝั่งซ้าย
             top_colors = ["#FF0000", "#008000", "#0000FF", "#8A2BE2", "#A52A2A", "#FFA500", "#9ACD32"]
             for i in range(1, 8):
                 fig1.add_trace(go.Scatter(
@@ -285,7 +284,6 @@ if uploaded_files:
         if show_g2:
             st.subheader("2. Brazing zone Bottom #1-#7 (CH008-CH014)")
             fig2 = go.Figure()
-            # กำหนดสีเฉพาะสำหรับ Bottom Zone Z#1 ถึง Z#7 ตามภาพฝั่งขวา
             bottom_colors = ["#E0FFFF", "#FF1493", "#808080", "#00FF00", "#008000", "#0000FF", "#8A2BE2"]
             for i in range(1, 8):
                 ch_num = 7 + i
@@ -299,12 +297,12 @@ if uploaded_files:
             apply_industrial_style(fig2, "Temperature (°C)", y_range=[550, 650])
             st.plotly_chart(fig2, use_container_width=True)
 
-        # 3. Dryer Temp (Scale: 150 - 350 °C)
+        # 3. Dryer Temp (Scale: 150 - 350 °C) -> #1 ส้ม, #2 เขียวตองอ่อน
         if show_g3:
             st.subheader("3. Dryer #1 & #2 (CH016 & CH017)")
             fig3 = go.Figure()
-            fig3.add_trace(go.Scatter(x=df["DateTime"], y=df["Dryer #1"], name="Dryer #1 (CH016)", mode="lines", line=dict(width=2)))
-            fig3.add_trace(go.Scatter(x=df["DateTime"], y=df["Dryer #2"], name="Dryer #2 (CH017)", mode="lines", line=dict(width=2)))
+            fig3.add_trace(go.Scatter(x=df["DateTime"], y=df["Dryer #1"], name="Dryer #1 (CH016)", mode="lines", line=dict(color="#FFA500", width=2)))
+            fig3.add_trace(go.Scatter(x=df["DateTime"], y=df["Dryer #2"], name="Dryer #2 (CH017)", mode="lines", line=dict(color="#9ACD32", width=2)))
             apply_industrial_style(fig3, "Temperature (°C)", y_range=[150, 350])
             st.plotly_chart(fig3, use_container_width=True)
 
