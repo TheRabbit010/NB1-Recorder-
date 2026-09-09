@@ -2,8 +2,9 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+import re
 
-# 1. ตั้งค่า Page Config และฉีด CSS บังคับ Dark Mode + ตกแต่งช่อง File Uploader ให้เห็นชัดเจน
+# 1. ตั้งค่า Page Config และฉีด CSS บังคับ Dark Mode + ตกแต่งช่อง File Uploader
 st.set_page_config(
     page_title="Industrial Furnace Monitor",
     page_icon="🏭",
@@ -13,7 +14,6 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-        /* บังคับพื้นหลังแอปทั้งหมดเป็น Dark Mode ถาวร */
         .stApp {
             background-color: #0e1117 !important;
             color: #ffffff !important;
@@ -24,15 +24,12 @@ st.markdown("""
         .stMarkdown, h1, h2, h3, p, span, label {
             color: #ffffff !important;
         }
-
-        /* --- ตกแต่งกล่อง File Uploader ให้มองเห็นชัดเจน --- */
         [data-testid="stFileUploader"] {
             background-color: #21262d !important;
             border: 1.5px stroke #F0B90B !important;
             border-radius: 8px !important;
             padding: 10px !important;
         }
-        /* ข้อความในช่อง File Uploader */
         [data-testid="stFileUploader"] section {
             background-color: #1c2128 !important;
             border: 1px dashed #F0B90B !important;
@@ -43,7 +40,6 @@ st.markdown("""
         [data-testid="stFileUploader"] section small {
             color: #e6edf3 !important;
         }
-        /* ปุ่ม Browse Files ใน File Uploader */
         [data-testid="stFileUploader"] button {
             background-color: #30363d !important;
             color: #ffffff !important;
@@ -54,75 +50,131 @@ st.markdown("""
             background-color: #F0B90B !important;
             color: #000000 !important;
         }
-        /* ชื่อไฟล์ที่ถูกเลือกแล้ว */
-        [data-testid="stFileUploaderDropzoneInstructions"] {
-            color: #ffffff !important;
-        }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏭 Real-Time Industrial Furnace Monitor (Multi-File Supported)")
+st.title("🏭 Real-Time Industrial Furnace Monitor (Smart Scanner)")
 
-# 2. ฟังก์ชันประมวลผลไฟล์เดี่ยว (ค้นหา Channel จากชื่อ Header โดยตรง)
+# 2. ฟังก์ชันสแกนและดึงข้อมูลอัจฉริยะ (Smart Dynamic Scanner)
 def parse_single_file(uploaded_file):
     file_name = uploaded_file.name.lower()
     
+    # อ่านไฟล์แบบไม่มี Header เพื่อวิเคราะห์โครงสร้างจริง
     if file_name.endswith('.csv'):
-        raw_df = pd.read_csv(uploaded_file, header=None)
+        raw_df = pd.read_csv(uploaded_file, header=None, low_memory=False)
     elif file_name.endswith('.xls'):
         raw_df = pd.read_excel(uploaded_file, header=None, engine='xlrd')
-    else:  # .xlsx
+    else:
         raw_df = pd.read_excel(uploaded_file, header=None, engine='openpyxl')
 
-    header_ch_row = raw_df.iloc[26].astype(str).tolist()
-    header_mm_row = raw_df.iloc[27].astype(str).tolist()
+    # ค้นหาแถวเริ่มต้นของข้อมูลตัวเลข (หาแถวที่เริ่มมี Date/Time แบบ YYYY/MM/DD หรือ YYYY-MM-DD)
+    data_start_row = 28 # ค่าเริ่มต้นมาตรฐาน
+    for r in range(min(50, len(raw_df))):
+        val_str = str(raw_df.iloc[r, 0])
+        if re.search(r'\d{2,4}[-/]\d{1,2}[-/]\d{1,2}', val_str):
+            data_start_row = r
+            break
 
-    def find_ch_max_col(ch_name):
-        for idx, ch in enumerate(header_ch_row):
-            if ch_name in ch:
-                if "MAX" in str(header_mm_row[idx]).upper():
-                    return idx
-                elif idx + 1 < len(header_mm_row) and "MAX" in str(header_mm_row[idx + 1]).upper():
-                    return idx + 1
-        return None
+    # แยกส่วน Header (ด้านบน) และส่วนข้อมูล (ด้านล่าง)
+    header_df = raw_df.iloc[:data_start_row].copy()
+    data_df = raw_df.iloc[data_start_row:].copy().reset_index(drop=True)
 
-    data_df = raw_df.iloc[28:].copy().reset_index(drop=True)
+    # ฟังก์ชันสแกนหา Index ของคอลัมน์ตามชื่อ Channel และประเภท MAX
+    def scan_channel_col(ch_num):
+        target_patterns = [f"CH{ch_num:03d}", f"CH{ch_num:02d}", f"CH{ch_num}"]
+        matched_cols = []
+        
+        # สแกนหาทุกช่องใน Header ที่มีชื่อ Channel ตรงกัน
+        for col in range(header_df.shape[1]):
+            col_text = " ".join(header_df[col].astype(str).tolist()).upper()
+            if any(p in col_text for p in target_patterns):
+                matched_cols.append(col)
+        
+        if not matched_cols:
+            return None
+        
+        # ถ้าเจอมิติเดียว ให้คืนค่าคอลัมน์นั้น
+        if len(matched_cols) == 1:
+            return matched_cols[0]
+            
+        # ถ้าเจอหลายคอลัมน์ (เช่น มีทั้ง MIN และ MAX) ให้สแกนหาคอลัมน์ที่มีคำว่า 'MAX'
+        for col in matched_cols:
+            col_text = " ".join(header_df[col].astype(str).tolist()).upper()
+            if "MAX" in col_text:
+                return col
+                
+        # หากไม่ระบุ MAX ให้เลือกคอลัมน์สุดท้ายของ Channel นั้น (ปกติ Yokogawa วาง MAX ไว้หลัง MIN)
+        return matched_cols[-1]
+
     df = pd.DataFrame()
-    
+    # รวม Date (คอลัมน์ 0) และ Time (คอลัมน์ 1)
     df["DateTime"] = pd.to_datetime(data_df[0].astype(str) + " " + data_df[1].astype(str), errors="coerce")
 
-    def get_ch_data(ch_str):
-        col_idx = find_ch_max_col(ch_str)
-        if col_idx is not None:
-            return pd.to_numeric(data_df[col_idx], errors="coerce")
-        return None
+    # ฟังก์ชันสกัดข้อมูลเป็นตัวเลข
+    def extract_series(col_idx):
+        if col_idx is not None and col_idx < data_df.shape[1]:
+            s = pd.to_numeric(data_df[col_idx], errors="coerce")
+            return s
+        return pd.Series([None] * len(data_df))
 
+    mapping_info = {}
+
+    # CH001 - CH007: Top Zone #1 - #7
     for i in range(1, 8):
-        df[f"Top Zone #{i}"] = get_ch_data(f"CH{i:03d}") or get_ch_data(f"CH{i}")
+        c = scan_channel_col(i)
+        df[f"Top Zone #{i}"] = extract_series(c)
+        mapping_info[f"Top Zone #{i}"] = f"Col {c}" if c else "Not Found"
 
+    # CH008 - CH014: Bottom Zone #1 - #7
     for i in range(1, 8):
         ch_num = 7 + i
-        df[f"Bottom Zone #{i}"] = get_ch_data(f"CH{ch_num:03d}") or get_ch_data(f"CH{ch_num}")
+        c = scan_channel_col(ch_num)
+        df[f"Bottom Zone #{i}"] = extract_series(c)
+        mapping_info[f"Bottom Zone #{i}"] = f"Col {c}" if c else "Not Found"
 
-    df["EXIT O2"] = get_ch_data("CH015") or get_ch_data("CH15")
-    df["Dryer #1"] = get_ch_data("CH016") or get_ch_data("CH16")
-    df["Dryer #2"] = get_ch_data("CH017") or get_ch_data("CH17")
-    df["N2 Flow"] = get_ch_data("CH018") or get_ch_data("CH18")
-    df["ENTRANCE O2"] = get_ch_data("CH019") or get_ch_data("CH19")
-    df["DEW POINT"] = get_ch_data("CH020") or get_ch_data("CH20")
+    # CH015: EXIT O2
+    c15 = scan_channel_col(15)
+    df["EXIT O2"] = extract_series(c15)
+    mapping_info["EXIT O2 (CH15)"] = f"Col {c15}" if c15 else "Not Found"
 
-    return df.dropna(subset=["DateTime"])
+    # CH016: Dryer #1 & CH017: Dryer #2
+    c16 = scan_channel_col(16)
+    c17 = scan_channel_col(17)
+    df["Dryer #1"] = extract_series(c16)
+    df["Dryer #2"] = extract_series(c17)
+    mapping_info["Dryer #1 (CH16)"] = f"Col {c16}" if c16 else "Not Found"
+    mapping_info["Dryer #2 (CH17)"] = f"Col {c17}" if c17 else "Not Found"
 
+    # CH018: N2 Flow
+    c18 = scan_channel_col(18)
+    df["N2 Flow"] = extract_series(c18)
+    mapping_info["N2 Flow (CH18)"] = f"Col {c18}" if c18 else "Not Found"
+
+    # CH019: ENTRANCE O2
+    c19 = scan_channel_col(19)
+    df["ENTRANCE O2"] = extract_series(c19)
+    mapping_info["ENTRANCE O2 (CH19)"] = f"Col {c19}" if c19 else "Not Found"
+
+    # CH020: DEW POINT
+    c20 = scan_channel_col(20)
+    df["DEW POINT"] = extract_series(c20)
+    mapping_info["DEW POINT (CH20)"] = f"Col {c20}" if c20 else "Not Found"
+
+    return df.dropna(subset=["DateTime"]), mapping_info
+
+# ฟังก์ชันประมวลผลหลายไฟล์
 @st.cache_data
 def process_multiple_files(uploaded_files):
     combined_dfs = []
+    logs = {}
     for file in uploaded_files:
-        single_df = parse_single_file(file)
+        single_df, mapping = parse_single_file(file)
         combined_dfs.append(single_df)
+        logs[file.name] = mapping
     
     full_df = pd.concat(combined_dfs, ignore_index=True)
     full_df = full_df.drop_duplicates(subset=["DateTime"]).sort_values("DateTime").reset_index(drop=True)
-    return full_df
+    return full_df, logs
 
 # 3. ฟังก์ชันตกแต่งสไตล์กราฟ
 def apply_industrial_style(fig, y_title, y_range=None, is_dual_axis=False):
@@ -178,8 +230,12 @@ uploaded_files = st.sidebar.file_uploader(
 # 4. ส่วนแสดงผลหลัก
 if uploaded_files:
     try:
-        raw_df = process_multiple_files(uploaded_files)
+        raw_df, channel_logs = process_multiple_files(uploaded_files)
         st.sidebar.success(f"รวมข้อมูลสำเร็จ {len(uploaded_files)} ไฟล์ ({len(raw_df)} แถว)")
+
+        # แสดง Log การค้นพบ Channel เพื่อให้ตรวจสอบความถูกต้อง
+        with st.sidebar.expander("🔍 ตรวจสอบการสแกนจับคู่คอลัมน์"):
+            st.json(channel_logs)
 
         st.sidebar.markdown("---")
         st.sidebar.header("🎛️ Dynamic Controls")
