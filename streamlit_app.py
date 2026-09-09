@@ -69,7 +69,7 @@ def read_excel_safe(uploaded_file):
         except Exception:
             return pd.read_excel(uploaded_file, header=None)
 
-# 3. ฟังก์ชันสแกนและดึงข้อมูลอัจฉริยะ (เพิ่มการสแกนหา N2 .1)
+# 3. ฟังก์ชันสแกนและดึงข้อมูลอัจฉริยะ (รองรับค่าติดลบของ Dew Point)
 def parse_single_file(uploaded_file):
     raw_df = read_excel_safe(uploaded_file)
 
@@ -114,10 +114,11 @@ def parse_single_file(uploaded_file):
     df = pd.DataFrame()
     df["DateTime"] = pd.to_datetime(data_df[0].astype(str) + " " + data_df[1].astype(str), errors="coerce")
 
-    def extract_series(col_idx):
+    # ปรับแต่งให้สกัดค่าติดลบได้อย่างถูกต้อง (รองรับค่าตั้งแต่ -150 ถึง 15000)
+    def extract_series(col_idx, min_val=-150.0, max_val=15000.0):
         if col_idx is not None and col_idx < data_df.shape[1]:
             s = pd.to_numeric(data_df[col_idx], errors="coerce")
-            s = s.apply(lambda x: x if (pd.notna(x) and x < 15000) else None)
+            s = s.apply(lambda x: x if (pd.notna(x) and min_val <= x <= max_val) else None)
             return s
         return pd.Series([None] * len(data_df))
 
@@ -126,42 +127,42 @@ def parse_single_file(uploaded_file):
     # CH001 - CH007: Top Zone #1 - #7
     for i in range(1, 8):
         c = scan_channel_col(i)
-        df[f"Top Zone #{i}"] = extract_series(c)
+        df[f"Top Zone #{i}"] = extract_series(c, min_val=0.0, max_val=1500.0)
         mapping_info[f"Top Zone #{i}"] = f"Col {c}" if c is not None else "Not Found"
 
     # CH008 - CH014: Bottom Zone #1 - #7
     for i in range(1, 8):
         ch_num = 7 + i
         c = scan_channel_col(ch_num)
-        df[f"Bottom Zone #{i}"] = extract_series(c)
+        df[f"Bottom Zone #{i}"] = extract_series(c, min_val=0.0, max_val=1500.0)
         mapping_info[f"Bottom Zone #{i}"] = f"Col {c}" if c is not None else "Not Found"
 
     # CH015: EXIT O2
     c15 = scan_channel_col(15)
-    df["EXIT O2"] = extract_series(c15)
+    df["EXIT O2"] = extract_series(c15, min_val=0.0, max_val=2000.0)
     mapping_info["EXIT O2 (CH15)"] = f"Col {c15}" if c15 is not None else "Not Found"
 
     # CH016 & CH017: Dryer #1 & Dryer #2
     c16 = scan_channel_col(16)
     c17 = scan_channel_col(17)
-    df["Dryer #1"] = extract_series(c16)
-    df["Dryer #2"] = extract_series(c17)
+    df["Dryer #1"] = extract_series(c16, min_val=0.0, max_val=1000.0)
+    df["Dryer #2"] = extract_series(c17, min_val=0.0, max_val=1000.0)
     mapping_info["Dryer #1 (CH16)"] = f"Col {c16}" if c16 is not None else "Not Found"
     mapping_info["Dryer #2 (CH17)"] = f"Col {c17}" if c17 is not None else "Not Found"
 
-    # CH018: N2 Flow (เพิ่มคีย์เวิร์ด N2 .1, N2.1, N2 Flow)
+    # CH018: N2 Flow
     c18 = scan_channel_col(18, custom_keywords=["N2 .1", "N2.1", "N2 Flow", "N2"])
-    df["N2 Flow"] = extract_series(c18)
+    df["N2 Flow"] = extract_series(c18, min_val=0.0, max_val=20000.0)
     mapping_info["N2 Flow (CH18/N2.1)"] = f"Col {c18}" if c18 is not None else "Not Found"
 
     # CH019: ENTRANCE O2
     c19 = scan_channel_col(19)
-    df["ENTRANCE O2"] = extract_series(c19)
+    df["ENTRANCE O2"] = extract_series(c19, min_val=0.0, max_val=2000.0)
     mapping_info["ENTRANCE O2 (CH19)"] = f"Col {c19}" if c19 is not None else "Not Found"
 
-    # CH020: DEW POINT
-    c20 = scan_channel_col(20)
-    df["DEW POINT"] = extract_series(c20)
+    # CH020: DEW POINT (อนุญาตให้ติดลบได้ตั้งแต่ -150 °Cdp)
+    c20 = scan_channel_col(20, custom_keywords=["DEW POINT", "DEW", "DP"])
+    df["DEW POINT"] = extract_series(c20, min_val=-150.0, max_val=100.0)
     mapping_info["DEW POINT (CH20)"] = f"Col {c20}" if c20 is not None else "Not Found"
 
     return df.dropna(subset=["DateTime"]), mapping_info
@@ -309,7 +310,7 @@ if uploaded_files:
             apply_industrial_style(fig3, "Temperature (°C)", y_range=[150, 350])
             st.plotly_chart(fig3, use_container_width=True)
 
-        # 4. O2 & N2 Flow Rate (CH019 = ชมพู, CH015 = น้ำตาลแดง, CH018/N2.1 = ฟ้าอ่อน)
+        # 4. O2 & N2 Flow Rate (CH019, CH015, CH018)
         if show_g4:
             st.subheader("4. ppmO2 Entry/Exit & N2 Flow (CH015, CH018, CH019)")
             fig4 = make_subplots(specs=[[{"secondary_y": True}]])
@@ -338,12 +339,19 @@ if uploaded_files:
             )
             st.plotly_chart(fig4, use_container_width=True)
 
-        # 5. Dew Point (Scale: 10 to -100 °Cdp)
+        # 5. Dew Point (Scale: -100 ถึง 10 °Cdp ตามแกน Y จริง)
         if show_g5:
             st.subheader("5. Dew point 'Cdp (CH020)")
             fig5 = go.Figure()
-            fig5.add_trace(go.Scatter(x=df["DateTime"], y=df["DEW POINT"], name="Dew Point (CH020)", mode="lines", line=dict(color="#00ecff", width=2)))
-            apply_industrial_style(fig5, "Dew Point (°Cdp)", y_range=[10, -100])
+            fig5.add_trace(go.Scatter(
+                x=df["DateTime"], 
+                y=df["DEW POINT"], 
+                name="Dew Point (CH020)", 
+                mode="lines", 
+                line=dict(color="#00ecff", width=2)
+            ))
+            # กำหนดขอบเขตแกน Y ให้ถูกต้องตามทิศทาง [min, max] = [-100, 10]
+            apply_industrial_style(fig5, "Dew Point (°Cdp)", y_range=[-100, 10])
             st.plotly_chart(fig5, use_container_width=True)
 
         with st.expander("📋 ตรวจสอบและดาวน์โหลดตารางข้อมูลรวมเรียงตามเวลา"):
