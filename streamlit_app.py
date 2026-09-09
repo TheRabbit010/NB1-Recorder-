@@ -4,9 +4,9 @@ from plotly.subplots import make_subplots
 import streamlit as st
 import re
 
-# 1. ตั้งค่า Page Config และบังคับธีม Dark Mode ถาวรที่ระดับ Root
+# 1. ตั้งค่า Page Config และบังคับธีม Dark Mode ถาวร
 st.set_page_config(
-    page_title="Industrial Furnace Monitor",
+    page_title="Recorder NB1",
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -53,7 +53,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏭 Real-Time Industrial Furnace Monitor")
+# เปลี่ยนชื่อหลักเป็น Recorder NB1
+st.title("🏭 Recorder NB1")
 
 # 2. ฟังก์ชันอ่านไฟล์อย่างปลอดภัย
 def read_excel_safe(uploaded_file):
@@ -84,14 +85,15 @@ def parse_single_file(uploaded_file):
     data_df = raw_df.iloc[data_start_row:].copy().reset_index(drop=True)
 
     def scan_channel_col(ch_num):
-        target_patterns = [f"CH{ch_num:03d}", f"CH{ch_num:02d}", f"CH{ch_num}"]
+        pattern = re.compile(rf'\bCH0*{ch_num}\b', re.IGNORECASE)
         matched_cols = []
         
-        for col in range(header_df.shape[1]):
+        # ข้ามคอลัมน์ 0 และ 1 (Date และ Time)
+        for col in range(2, header_df.shape[1]):
             col_cells = header_df[col].fillna('').astype(str).tolist()
-            col_text = " ".join([str(cell) for cell in col_cells]).upper()
+            col_text = " ".join([str(cell) for cell in col_cells])
             
-            if any(p in col_text for p in target_patterns):
+            if pattern.search(col_text):
                 matched_cols.append(col)
         
         if not matched_cols:
@@ -113,7 +115,9 @@ def parse_single_file(uploaded_file):
 
     def extract_series(col_idx):
         if col_idx is not None and col_idx < data_df.shape[1]:
-            return pd.to_numeric(data_df[col_idx], errors="coerce")
+            s = pd.to_numeric(data_df[col_idx], errors="coerce")
+            s = s.apply(lambda x: x if (pd.notna(x) and x < 1500) else None)
+            return s
         return pd.Series([None] * len(data_df))
 
     mapping_info = {}
@@ -162,7 +166,6 @@ def parse_single_file(uploaded_file):
     return df.dropna(subset=["DateTime"]), mapping_info
 
 # ฟังก์ชันประมวลผลหลายไฟล์
-@st.cache_data
 def process_multiple_files(uploaded_files):
     combined_dfs = []
     logs = {}
@@ -220,6 +223,11 @@ def apply_industrial_style(fig, y_title, y_range=None, is_dual_axis=False):
 
 # ส่วน Sidebar อัปโหลดไฟล์
 st.sidebar.header("📁 เมนูอัปโหลดข้อมูล")
+
+if st.sidebar.button("🧹 เคลียร์ข้อมูลไฟล์เก่าทั้งหมด"):
+    st.cache_data.clear()
+    st.rerun()
+
 uploaded_files = st.sidebar.file_uploader(
     "อัปโหลดไฟล์ Yokogawa (.csv, .xlsx, .xls) ได้มากกว่า 1 ไฟล์", 
     type=["csv", "xlsx", "xls"],
@@ -257,17 +265,6 @@ if uploaded_files:
         show_g3 = st.sidebar.checkbox("3. Dryer Temp (CH16-17)", value=True)
         show_g4 = st.sidebar.checkbox("4. O2 & N2 Flow (CH15, CH18, CH19)", value=True)
         show_g5 = st.sidebar.checkbox("5. Dew Point (CH20)", value=True)
-
-        if not df.empty:
-            latest = df.iloc[-1]
-            st.markdown("### 📌 ค่าล่าสุดในระบบ (Latest Readings)")
-            col1, col2, col3, col4, col5 = st.columns(5)
-            col1.metric("Top Zone #1", f"{latest['Top Zone #1']:.1f} °C" if pd.notna(latest['Top Zone #1']) else "N/A")
-            col2.metric("Bottom Zone #1", f"{latest['Bottom Zone #1']:.1f} °C" if pd.notna(latest['Bottom Zone #1']) else "N/A")
-            col3.metric("Dryer #1", f"{latest['Dryer #1']:.1f} °C" if pd.notna(latest['Dryer #1']) else "N/A")
-            col4.metric("Exit O2 (CH15)", f"{latest['EXIT O2']:.1f} ppm" if pd.notna(latest['EXIT O2']) else "N/A")
-            col5.metric("Dew Point (CH20)", f"{latest['DEW POINT']:.1f} °Cdp" if pd.notna(latest['DEW POINT']) else "N/A")
-            st.markdown("---")
 
         # 1. Top Zone Temp (Scale: 550 - 650 °C)
         if show_g1:
