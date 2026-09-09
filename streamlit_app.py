@@ -53,7 +53,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# เปลี่ยนชื่อหลักเป็น Recorder NB1
 st.title("🏭 Recorder NB1")
 
 # 2. ฟังก์ชันอ่านไฟล์อย่างปลอดภัย
@@ -88,7 +87,6 @@ def parse_single_file(uploaded_file):
         pattern = re.compile(rf'\bCH0*{ch_num}\b', re.IGNORECASE)
         matched_cols = []
         
-        # ข้ามคอลัมน์ 0 และ 1 (Date และ Time)
         for col in range(2, header_df.shape[1]):
             col_cells = header_df[col].fillna('').astype(str).tolist()
             col_text = " ".join([str(cell) for cell in col_cells])
@@ -332,18 +330,3 @@ if uploaded_files:
 
 else:
     st.info("👈 กรุณาเลือกอัปโหลดไฟล์ (.csv หรือ .xlsx) ที่เมนูด้านซ้าย สามารถเลือกอัปโหลดได้มากกว่า 1 ไฟล์")
-    
-    st.markdown("""
-        <div style="background-color: #161b22; padding: 25px; border-radius: 10px; border: 1px solid #30363d;">
-            <h3 style="color: #F0B90B !important;">📌 โครงสร้าง Channel & Scale ที่ใช้งาน:</h3>
-            <ul>
-                <li><b>CH001 - CH007:</b> Top Zone Temp #1 - #7 <span style="color:#00ecff;">(Scale: 550 - 650 °C)</span></li>
-                <li><b>CH008 - CH014:</b> Bottom Zone Temp #1 - #7 <span style="color:#00ecff;">(Scale: 550 - 650 °C)</span></li>
-                <li><b>CH015:</b> EXIT O2 (แกนซ้าย Scale 0-200 ppm)</li>
-                <li><b>CH016 - CH017:</b> Dryer #1 & Dryer #2 <span style="color:#00ecff;">(Scale: 150 - 350 °C)</span></li>
-                <li><b>CH018:</b> N2 Flow Rate (แกนขวา Free scale)</li>
-                <li><b>CH019:</b> ENTRANCE O2 (แกนซ้าย Scale 0-200 ppm)</li>
-                <li><b>CH020:</b> DEW POINT (Scale 10 ถึง -100 °Cdp)</li>
-            </ul>
-        </div>
-    """, unsafe_allow_html=True)
