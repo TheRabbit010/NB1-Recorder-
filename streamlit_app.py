@@ -343,9 +343,6 @@ if uploaded_files:
         raw_df, channel_logs = process_multiple_files(uploaded_files)
         st.sidebar.success(f"รวมข้อมูลสำเร็จ {len(uploaded_files)} ไฟล์ ({len(raw_df)} แถว)")
 
-        with st.sidebar.expander("🔍 ตรวจสอบการสแกนจับคู่คอลัมน์"):
-            st.json(channel_logs)
-
         st.sidebar.markdown("---")
         st.sidebar.header("🎛️ Dynamic Controls")
         
