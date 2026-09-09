@@ -156,20 +156,8 @@ st.markdown("""
 # แสดงชื่อโปรแกรมหลัก
 st.title("🏭 Recorder NB1 Furnace")
 
-# 3. ฟังก์ชันอ่านไฟล์อย่างปลอดภัย
+# 3. ฟังก์ชันอ่านไฟล์ Excel อย่างปลอดภัย
 def read_excel_safe(uploaded_file):
-    file_name = uploaded_file.name.lower()
-    if file_name.endswith('.csv'):
-        encodings = ['cp932', 'shift_jis', 'utf-8-sig', 'utf-8', 'tis-620', 'latin1']
-        for enc in encodings:
-            try:
-                uploaded_file.seek(0)
-                return pd.read_csv(uploaded_file, header=None, low_memory=False, encoding=enc)
-            except Exception:
-                continue
-        uploaded_file.seek(0)
-        return pd.read_csv(uploaded_file, header=None, low_memory=False, encoding='utf-8', encoding_errors='ignore')
-    
     try:
         uploaded_file.seek(0)
         return pd.read_excel(uploaded_file, header=None, engine='openpyxl')
@@ -344,8 +332,8 @@ if st.sidebar.button("🧹 เคลียร์ข้อมูลไฟล์�
     st.rerun()
 
 uploaded_files = st.sidebar.file_uploader(
-    "อัปโหลดไฟล์ Yokogawa (.csv, .xlsx, .xls) ได้มากกว่า 1 ไฟล์", 
-    type=["csv", "xlsx", "xls"],
+    "อัปโหลดไฟล์ Yokogawa (.xlsx, .xls) ได้มากกว่า 1 ไฟล์", 
+    type=["xlsx", "xls"],
     accept_multiple_files=True
 )
 
@@ -497,4 +485,4 @@ if uploaded_files:
         st.error(f"❌ เกิดข้อผิดพลาดในการประมวลผลไฟล์: {e}")
 
 else:
-    st.info("👈 กรุณาเลือกอัปโหลดไฟล์ (.csv หรือ .xlsx) ที่เมนูด้านซ้าย สามารถเลือกอัปโหลดได้มากกว่า 1 ไฟล์")
+    st.info("👈 กรุณาเลือกอัปโหลดไฟล์ (.xlsx หรือ .xls) ที่เมนูด้านซ้าย สามารถเลือกอัปโหลดได้มากกว่า 1 ไฟล์")
