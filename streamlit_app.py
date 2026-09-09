@@ -4,7 +4,7 @@ from plotly.subplots import make_subplots
 import streamlit as st
 import re
 
-# 1. ตั้งค่า Page Config และบังคับธีม Dark Mode ถาวร
+# 1. ตั้งค่า Page Config และปรับแต่ง CSS ให้เห็นตัวหนังสือชัดเจน
 st.set_page_config(
     page_title="Recorder NB1",
     page_icon="🏭",
@@ -24,8 +24,25 @@ st.markdown("""
         .stMarkdown, h1, h2, h3, p, span, label {
             color: #ffffff !important;
         }
-        [data-testid="stFileUploader"] {
+
+        /* --- 1. ปรับสไตล์ปุ่มทั่วไปและปุ่มเคลียร์ข้อมูลใน Sidebar --- */
+        [data-testid="stSidebar"] div.stButton > button {
             background-color: #21262d !important;
+            color: #ffffff !important;
+            border: 1px solid #F0B90B !important;
+            font-weight: bold !important;
+            width: 100% !important;
+            padding: 8px 16px !important;
+        }
+        [data-testid="stSidebar"] div.stButton > button:hover {
+            background-color: #F0B90B !important;
+            color: #000000 !important;
+            border-color: #F0B90B !important;
+        }
+
+        /* --- 2. ตกแต่งกล่อง File Uploader --- */
+        [data-testid="stFileUploader"] {
+            background-color: #161b22 !important;
             border: 1.5px solid #F0B90B !important;
             border-radius: 8px !important;
             padding: 10px !important;
@@ -40,15 +57,28 @@ st.markdown("""
         [data-testid="stFileUploader"] section small {
             color: #e6edf3 !important;
         }
-        [data-testid="stFileUploader"] button {
-            background-color: #30363d !important;
-            color: #ffffff !important;
-            border: 1px solid #F0B90B !important;
-            font-weight: bold !important;
+
+        /* --- 3. แก้ไขการ์ดรายการไฟล์ที่อัปโหลดแล้ว (เปลี่ยนสีพื้นหลังขาวเป็นเทาเข้ม) --- */
+        [data-testid="stFileUploaderFile"] {
+            background-color: #2b313a !important;
+            border: 1px solid #444c56 !important;
+            border-radius: 6px !important;
         }
-        [data-testid="stFileUploader"] button:hover {
-            background-color: #F0B90B !important;
-            color: #000000 !important;
+        /* ข้อความชื่อไฟล์ และขนาดไฟล์ */
+        [data-testid="stFileUploaderFile"] div,
+        [data-testid="stFileUploaderFile"] span,
+        [data-testid="stFileUploaderFile"] small {
+            color: #ffffff !important;
+            font-weight: 500 !important;
+        }
+        /* ปุ่มไอคอนลบไฟล์ (X) */
+        [data-testid="stFileUploaderFile"] button {
+            color: #F0B90B !important;
+            background-color: transparent !important;
+            border: none !important;
+        }
+        [data-testid="stFileUploaderFile"] button:hover {
+            color: #ff4b4b !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -69,7 +99,7 @@ def read_excel_safe(uploaded_file):
         except Exception:
             return pd.read_excel(uploaded_file, header=None)
 
-# 3. ฟังก์ชันสแกนและดึงข้อมูลอัจฉริยะ (รองรับค่าติดลบของ Dew Point)
+# 3. ฟังก์ชันสแกนและดึงข้อมูลอัจฉริยะ
 def parse_single_file(uploaded_file):
     raw_df = read_excel_safe(uploaded_file)
 
@@ -114,7 +144,6 @@ def parse_single_file(uploaded_file):
     df = pd.DataFrame()
     df["DateTime"] = pd.to_datetime(data_df[0].astype(str) + " " + data_df[1].astype(str), errors="coerce")
 
-    # ปรับแต่งให้สกัดค่าติดลบได้อย่างถูกต้อง (รองรับค่าตั้งแต่ -150 ถึง 15000)
     def extract_series(col_idx, min_val=-150.0, max_val=15000.0):
         if col_idx is not None and col_idx < data_df.shape[1]:
             s = pd.to_numeric(data_df[col_idx], errors="coerce")
@@ -160,7 +189,7 @@ def parse_single_file(uploaded_file):
     df["ENTRANCE O2"] = extract_series(c19, min_val=0.0, max_val=2000.0)
     mapping_info["ENTRANCE O2 (CH19)"] = f"Col {c19}" if c19 is not None else "Not Found"
 
-    # CH020: DEW POINT (อนุญาตให้ติดลบได้ตั้งแต่ -150 °Cdp)
+    # CH020: DEW POINT
     c20 = scan_channel_col(20, custom_keywords=["DEW POINT", "DEW", "DP"])
     df["DEW POINT"] = extract_series(c20, min_val=-150.0, max_val=100.0)
     mapping_info["DEW POINT (CH20)"] = f"Col {c20}" if c20 is not None else "Not Found"
@@ -310,7 +339,7 @@ if uploaded_files:
             apply_industrial_style(fig3, "Temperature (°C)", y_range=[150, 350])
             st.plotly_chart(fig3, use_container_width=True)
 
-        # 4. O2 & N2 Flow Rate (CH019, CH015, CH018)
+        # 4. O2 & N2 Flow Rate
         if show_g4:
             st.subheader("4. ppmO2 Entry/Exit & N2 Flow (CH015, CH018, CH019)")
             fig4 = make_subplots(specs=[[{"secondary_y": True}]])
@@ -339,7 +368,7 @@ if uploaded_files:
             )
             st.plotly_chart(fig4, use_container_width=True)
 
-        # 5. Dew Point (Scale: -100 ถึง 10 °Cdp ตามแกน Y จริง)
+        # 5. Dew Point (Scale: -100 ถึง 10 °Cdp)
         if show_g5:
             st.subheader("5. Dew point 'Cdp (CH020)")
             fig5 = go.Figure()
@@ -350,7 +379,6 @@ if uploaded_files:
                 mode="lines", 
                 line=dict(color="#00ecff", width=2)
             ))
-            # กำหนดขอบเขตแกน Y ให้ถูกต้องตามทิศทาง [min, max] = [-100, 10]
             apply_industrial_style(fig5, "Dew Point (°Cdp)", y_range=[-100, 10])
             st.plotly_chart(fig5, use_container_width=True)
 
