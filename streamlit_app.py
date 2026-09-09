@@ -268,8 +268,16 @@ if uploaded_files:
         if show_g1:
             st.subheader("1. Brazing zone Top #1-#7 (CH001-CH007)")
             fig1 = go.Figure()
+            # กำหนดสีเฉพาะสำหรับ Top Zone Z#1 ถึง Z#7 ตามภาพฝั่งซ้าย
+            top_colors = ["#FF0000", "#008000", "#0000FF", "#8A2BE2", "#A52A2A", "#FFA500", "#9ACD32"]
             for i in range(1, 8):
-                fig1.add_trace(go.Scatter(x=df["DateTime"], y=df[f"Top Zone #{i}"], name=f"Top Z#{i} (CH{i:03d})", mode="lines", line=dict(width=2)))
+                fig1.add_trace(go.Scatter(
+                    x=df["DateTime"], 
+                    y=df[f"Top Zone #{i}"], 
+                    name=f"Top Z#{i} (CH{i:03d})", 
+                    mode="lines", 
+                    line=dict(color=top_colors[i-1], width=2)
+                ))
             apply_industrial_style(fig1, "Temperature (°C)", y_range=[550, 650])
             st.plotly_chart(fig1, use_container_width=True)
 
@@ -277,9 +285,17 @@ if uploaded_files:
         if show_g2:
             st.subheader("2. Brazing zone Bottom #1-#7 (CH008-CH014)")
             fig2 = go.Figure()
+            # กำหนดสีเฉพาะสำหรับ Bottom Zone Z#1 ถึง Z#7 ตามภาพฝั่งขวา
+            bottom_colors = ["#E0FFFF", "#FF1493", "#808080", "#00FF00", "#008000", "#0000FF", "#8A2BE2"]
             for i in range(1, 8):
                 ch_num = 7 + i
-                fig2.add_trace(go.Scatter(x=df["DateTime"], y=df[f"Bottom Zone #{i}"], name=f"Bottom Z#{i} (CH{ch_num:03d})", mode="lines", line=dict(width=2)))
+                fig2.add_trace(go.Scatter(
+                    x=df["DateTime"], 
+                    y=df[f"Bottom Zone #{i}"], 
+                    name=f"Bottom Z#{i} (CH{ch_num:03d})", 
+                    mode="lines", 
+                    line=dict(color=bottom_colors[i-1], width=2)
+                ))
             apply_industrial_style(fig2, "Temperature (°C)", y_range=[550, 650])
             st.plotly_chart(fig2, use_container_width=True)
 
