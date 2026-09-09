@@ -14,7 +14,6 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-        /* บังคับพื้นหลังหน้าเว็บทั้งหมดเป็น Dark Mode ถาวร ป้องกันหน้าจอขาว */
         html, body, .stApp, [data-testid="stAppViewContainer"] {
             background-color: #0e1117 !important;
             color: #ffffff !important;
@@ -25,8 +24,6 @@ st.markdown("""
         .stMarkdown, h1, h2, h3, p, span, label {
             color: #ffffff !important;
         }
-
-        /* ตกแต่งกล่อง File Uploader ให้ชัดเจน */
         [data-testid="stFileUploader"] {
             background-color: #21262d !important;
             border: 1.5px solid #F0B90B !important;
@@ -56,16 +53,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# แสดง Title เสมอ
 st.title("🏭 Real-Time Industrial Furnace Monitor")
 
-# 2. ฟังก์ชันอ่านไฟล์อย่างปลอดภัย (มีระบบ Engine Fallback)
+# 2. ฟังก์ชันอ่านไฟล์อย่างปลอดภัย
 def read_excel_safe(uploaded_file):
     file_name = uploaded_file.name.lower()
     if file_name.endswith('.csv'):
         return pd.read_csv(uploaded_file, header=None, low_memory=False)
     
-    # ลองใช้ openpyxl หากล้มเหลวให้ลอง xlrd หรืออ่านธรรมดา
     try:
         return pd.read_excel(uploaded_file, header=None, engine='openpyxl')
     except Exception:
@@ -74,11 +69,10 @@ def read_excel_safe(uploaded_file):
         except Exception:
             return pd.read_excel(uploaded_file, header=None)
 
-# 3. ฟังก์ชันสแกนและดึงข้อมูลอัจฉริยะ (กัน Float/NaN Error)
+# 3. ฟังก์ชันสแกนและดึงข้อมูลอัจฉริยะ
 def parse_single_file(uploaded_file):
     raw_df = read_excel_safe(uploaded_file)
 
-    # หาแถวเริ่มต้นของข้อมูลวัน-เวลา
     data_start_row = 28
     for r in range(min(50, len(raw_df))):
         val_str = str(raw_df.iloc[r, 0])
@@ -89,7 +83,6 @@ def parse_single_file(uploaded_file):
     header_df = raw_df.iloc[:data_start_row].copy()
     data_df = raw_df.iloc[data_start_row:].copy().reset_index(drop=True)
 
-    # ค้นหา Index คอลัมน์แบบปลอดภัย
     def scan_channel_col(ch_num):
         target_patterns = [f"CH{ch_num:03d}", f"CH{ch_num:02d}", f"CH{ch_num}"]
         matched_cols = []
@@ -276,31 +269,35 @@ if uploaded_files:
             col5.metric("Dew Point (CH20)", f"{latest['DEW POINT']:.1f} °Cdp" if pd.notna(latest['DEW POINT']) else "N/A")
             st.markdown("---")
 
+        # 1. Top Zone Temp (Scale: 550 - 650 °C)
         if show_g1:
             st.subheader("1. Brazing zone Top #1-#7 (CH001-CH007)")
             fig1 = go.Figure()
             for i in range(1, 8):
                 fig1.add_trace(go.Scatter(x=df["DateTime"], y=df[f"Top Zone #{i}"], name=f"Top Z#{i} (CH{i:03d})", mode="lines", line=dict(width=2)))
-            apply_industrial_style(fig1, "Temperature (°C)", y_range=[300, 650])
+            apply_industrial_style(fig1, "Temperature (°C)", y_range=[550, 650])
             st.plotly_chart(fig1, use_container_width=True)
 
+        # 2. Bottom Zone Temp (Scale: 550 - 650 °C)
         if show_g2:
             st.subheader("2. Brazing zone Bottom #1-#7 (CH008-CH014)")
             fig2 = go.Figure()
             for i in range(1, 8):
                 ch_num = 7 + i
                 fig2.add_trace(go.Scatter(x=df["DateTime"], y=df[f"Bottom Zone #{i}"], name=f"Bottom Z#{i} (CH{ch_num:03d})", mode="lines", line=dict(width=2)))
-            apply_industrial_style(fig2, "Temperature (°C)", y_range=[300, 650])
+            apply_industrial_style(fig2, "Temperature (°C)", y_range=[550, 650])
             st.plotly_chart(fig2, use_container_width=True)
 
+        # 3. Dryer Temp (Scale: 150 - 350 °C)
         if show_g3:
             st.subheader("3. Dryer #1 & #2 (CH016 & CH017)")
             fig3 = go.Figure()
             fig3.add_trace(go.Scatter(x=df["DateTime"], y=df["Dryer #1"], name="Dryer #1 (CH016)", mode="lines", line=dict(width=2)))
             fig3.add_trace(go.Scatter(x=df["DateTime"], y=df["Dryer #2"], name="Dryer #2 (CH017)", mode="lines", line=dict(width=2)))
-            apply_industrial_style(fig3, "Temperature (°C)", y_range=[0, 400])
+            apply_industrial_style(fig3, "Temperature (°C)", y_range=[150, 350])
             st.plotly_chart(fig3, use_container_width=True)
 
+        # 4. O2 & N2 Flow Rate (Scale: 0 - 200 ppm / Free Scale)
         if show_g4:
             st.subheader("4. ppmO2 Entry/Exit & N2 Flow (CH015, CH018, CH019)")
             fig4 = make_subplots(specs=[[{"secondary_y": True}]])
@@ -315,6 +312,7 @@ if uploaded_files:
             )
             st.plotly_chart(fig4, use_container_width=True)
 
+        # 5. Dew Point (Scale: 10 to -100 °Cdp)
         if show_g5:
             st.subheader("5. Dew point 'Cdp (CH020)")
             fig5 = go.Figure()
@@ -336,20 +334,19 @@ if uploaded_files:
         st.error(f"❌ เกิดข้อผิดพลาดในการประมวลผลไฟล์: {e}")
 
 else:
-    # แสดง Welcome Page มืด ป้องกันหน้าจอว่างเปล่า
     st.info("👈 กรุณาเลือกอัปโหลดไฟล์ (.csv หรือ .xlsx) ที่เมนูด้านซ้าย สามารถเลือกอัปโหลดได้มากกว่า 1 ไฟล์")
     
     st.markdown("""
         <div style="background-color: #161b22; padding: 25px; border-radius: 10px; border: 1px solid #30363d;">
-            <h3 style="color: #F0B90B !important;">📌 โครงสร้าง Channel ที่เปิดใช้งาน:</h3>
+            <h3 style="color: #F0B90B !important;">📌 โครงสร้าง Channel & Scale ที่ใช้งาน:</h3>
             <ul>
-                <li><b>CH001 - CH007:</b> Top Zone Temp #1 - #7</li>
-                <li><b>CH008 - CH014:</b> Bottom Zone Temp #1 - #7</li>
+                <li><b>CH001 - CH007:</b> Top Zone Temp #1 - #7 <span style="color:#00ecff;">(Scale: 550 - 650 °C)</span></li>
+                <li><b>CH008 - CH014:</b> Bottom Zone Temp #1 - #7 <span style="color:#00ecff;">(Scale: 550 - 650 °C)</span></li>
                 <li><b>CH015:</b> EXIT O2 (แกนซ้าย Scale 0-200 ppm)</li>
-                <li><b>CH016 - CH017:</b> Dryer #1 & Dryer #2</li>
-                <li><b>CH018:</b> N2 Flow Rate (แกนขวา Free scale อยู่กราฟเดียวกับ O2)</li>
+                <li><b>CH016 - CH017:</b> Dryer #1 & Dryer #2 <span style="color:#00ecff;">(Scale: 150 - 350 °C)</span></li>
+                <li><b>CH018:</b> N2 Flow Rate (แกนขวา Free scale)</li>
                 <li><b>CH019:</b> ENTRANCE O2 (แกนซ้าย Scale 0-200 ppm)</li>
-                <li><b>CH020:</b> DEW POINT (Scale 10 ถึง -100 °Cdp กราฟอิสระ)</li>
+                <li><b>CH020:</b> DEW POINT (Scale 10 ถึง -100 °Cdp)</li>
             </ul>
         </div>
     """, unsafe_allow_html=True)
