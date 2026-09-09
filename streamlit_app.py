@@ -297,7 +297,7 @@ if uploaded_files:
             apply_industrial_style(fig2, "Temperature (°C)", y_range=[550, 650])
             st.plotly_chart(fig2, use_container_width=True)
 
-        # 3. Dryer Temp (Scale: 150 - 350 °C) -> #1 ส้ม, #2 เขียวตองอ่อน
+        # 3. Dryer Temp (Scale: 150 - 350 °C)
         if show_g3:
             st.subheader("3. Dryer #1 & #2 (CH016 & CH017)")
             fig3 = go.Figure()
@@ -306,18 +306,24 @@ if uploaded_files:
             apply_industrial_style(fig3, "Temperature (°C)", y_range=[150, 350])
             st.plotly_chart(fig3, use_container_width=True)
 
-        # 4. O2 & N2 Flow Rate (Scale: 0 - 200 ppm / Free Scale)
+        # 4. O2 & N2 Flow Rate (CH019 = ชมพู, CH015 = น้ำตาลแดง, CH018 = ฟ้าอ่อน)
         if show_g4:
             st.subheader("4. ppmO2 Entry/Exit & N2 Flow (CH015, CH018, CH019)")
             fig4 = make_subplots(specs=[[{"secondary_y": True}]])
-            fig4.add_trace(go.Scatter(x=df["DateTime"], y=df["ENTRANCE O2"], name="ENTRANCE O2 (CH019)", mode="lines", line=dict(width=2)), secondary_y=False)
-            fig4.add_trace(go.Scatter(x=df["DateTime"], y=df["EXIT O2"], name="EXIT O2 (CH015)", mode="lines", line=dict(width=2)), secondary_y=False)
-            fig4.add_trace(go.Scatter(x=df["DateTime"], y=df["N2 Flow"], name="N2 Flow (CH018)", mode="lines", line=dict(color="#ff7f0e", width=2)), secondary_y=True)
+            
+            # CH019 (ENTRANCE O2) - สีชมพู/ม่วงอ่อน (#FF80FF)
+            fig4.add_trace(go.Scatter(x=df["DateTime"], y=df["ENTRANCE O2"], name="ENTRANCE O2 (CH019)", mode="lines", line=dict(color="#FF80FF", width=2)), secondary_y=False)
+            
+            # CH015 (EXIT O2) - สีน้ำตาลแดง (#A52A2A)
+            fig4.add_trace(go.Scatter(x=df["DateTime"], y=df["EXIT O2"], name="EXIT O2 (CH015)", mode="lines", line=dict(color="#A52A2A", width=2)), secondary_y=False)
+            
+            # CH018 (N2 Flow) - สีฟ้าอ่อน (#ADD8E6)
+            fig4.add_trace(go.Scatter(x=df["DateTime"], y=df["N2 Flow"], name="N2 Flow (CH018)", mode="lines", line=dict(color="#ADD8E6", width=2)), secondary_y=True)
             
             apply_industrial_style(fig4, "Oxygen Level (ppm)", is_dual_axis=True)
             fig4.update_layout(
                 yaxis=dict(range=[0, 200], title="Oxygen Level (ppm) [0-200]", showgrid=True, gridcolor="rgba(255,255,255,0.08)"),
-                yaxis2=dict(title="N2 Flow Rate (Free Scale)", showgrid=False, overlaying="y", side="right", linecolor="#ff7f0e")
+                yaxis2=dict(title="N2 Flow Rate (Free Scale)", showgrid=False, overlaying="y", side="right", linecolor="#ADD8E6")
             )
             st.plotly_chart(fig4, use_container_width=True)
 
