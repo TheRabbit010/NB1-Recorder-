@@ -4,16 +4,27 @@ from plotly.subplots import make_subplots
 import streamlit as st
 import re
 
-# 1. ตั้งค่า Page Config และปรับแต่ง CSS ให้เห็นตัวหนังสือชัดเจน
+# 1. ตั้งค่า Page Config
 st.set_page_config(
-    page_title="Recorder NB1",
+    page_title="Recorder NB1 Furnace",
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# 2. ปรับแต่ง CSS ให้เป็น Dark Mode, ซ่อนแถบขาวด้านบน และตั้งค่าสีข้อความให้ชัดเจน
 st.markdown("""
     <style>
+        /* ซ่อนแถบขาว Header ด้านบน */
+        header[data-testid="stHeader"] {
+            background-color: transparent !important;
+            display: none !important;
+        }
+        [data-testid="stToolbar"] {
+            display: none !important;
+        }
+        
+        /* ตั้งค่าพื้นหลัง Dark Mode */
         html, body, .stApp, [data-testid="stAppViewContainer"] {
             background-color: #0e1117 !important;
             color: #ffffff !important;
@@ -25,7 +36,7 @@ st.markdown("""
             color: #ffffff !important;
         }
 
-        /* --- 1. ปรับสไตล์ปุ่มเคลียร์ข้อมูล --- */
+        /* ปุ่มเคลียร์ข้อมูลใน Sidebar */
         [data-testid="stSidebar"] div.stButton > button {
             background-color: #21262d !important;
             color: #ffffff !important;
@@ -39,7 +50,7 @@ st.markdown("""
             color: #000000 !important;
         }
 
-        /* --- 2. ตกแต่งกล่อง File Uploader --- */
+        /* กล่อง File Uploader */
         [data-testid="stFileUploader"] {
             background-color: #161b22 !important;
             border: 1.5px solid #F0B90B !important;
@@ -57,7 +68,7 @@ st.markdown("""
             color: #e6edf3 !important;
         }
 
-        /* --- 3. แก้ไขการ์ดไฟล์ที่อัปโหลดแล้ว (แก้ปัญหาการ์ดขาวตัวหนังสือกลืน) --- */
+        /* การ์ดไฟล์ที่อัปโหลดแล้ว */
         [data-testid="stFileUploaderFileData"],
         [data-testid="stFileUploaderFileData"] > div,
         [data-testid="stFileUploaderFile"] {
@@ -65,41 +76,112 @@ st.markdown("""
             border: 1px solid #F0B90B !important;
             border-radius: 6px !important;
         }
-        /* บังคับสีตัวอักษรชื่อไฟล์และขนาดไฟล์ให้อ่านง่าย */
         [data-testid="stFileUploaderFileData"] *,
         [data-testid="stFileUploaderFile"] * {
             color: #ffffff !important;
             font-weight: bold !important;
         }
-        /* ปุ่มลบไฟล์ (X) */
-        [data-testid="stFileUploaderFile"] button,
-        [data-testid="stFileUploaderFileData"] button {
-            background-color: transparent !important;
-            color: #F0B90B !important;
+
+        /* ปรับแถบ Expander */
+        [data-testid="stExpander"] {
+            background-color: #161b22 !important;
+            border: 1px solid #30363d !important;
+            border-radius: 8px !important;
         }
-        [data-testid="stFileUploaderFile"] button:hover {
-            color: #ff4b4b !important;
+        [data-testid="stExpander"] details summary {
+            background-color: #21262d !important;
+            color: #ffffff !important;
+            border-radius: 8px !important;
+        }
+        [data-testid="stExpander"] details summary * {
+            color: #ffffff !important;
+        }
+
+        /* ปรับแต่งตาราง Dataframe */
+        [data-testid="stDataFrame"] {
+            background-color: #161b22 !important;
+            border: 1px solid #30363d !important;
+            border-radius: 8px !important;
+        }
+        div[data-testid="stDataFrame"] div[role="grid"] {
+            background-color: #161b22 !important;
+            color: #ffffff !important;
+        }
+        div[data-testid="stDataFrame"] div[role="columnheader"] {
+            background-color: #21262d !important;
+            color: #ffffff !important;
+        }
+
+        /* ปรับแต่งกล่องพิมพ์ข้อความ (Text Input) */
+        div[data-baseweb="input"] {
+            background-color: #21262d !important;
+            border: 1px solid #30363d !important;
+            color: #ffffff !important;
+            border-radius: 6px !important;
+        }
+        div[data-baseweb="input"] input {
+            background-color: #21262d !important;
+            color: #ffffff !important;
+        }
+
+        /* ปรับแต่งปุ่มดาวน์โหลด CSV */
+        div.stDownloadButton > button {
+            background-color: #21262d !important;
+            border: 1.5px solid #F0B90B !important;
+            border-radius: 6px !important;
+            padding: 8px 16px !important;
+            transition: all 0.2s ease-in-out;
+        }
+        div.stDownloadButton > button, 
+        div.stDownloadButton > button *,
+        div.stDownloadButton > button p,
+        div.stDownloadButton > button span {
+            color: #ffffff !important;
+            font-weight: bold !important;
+            font-size: 15px !important;
+        }
+        div.stDownloadButton > button:hover {
+            background-color: #F0B90B !important;
+            border-color: #F0B90B !important;
+        }
+        div.stDownloadButton > button:hover,
+        div.stDownloadButton > button:hover *,
+        div.stDownloadButton > button:hover p,
+        div.stDownloadButton > button:hover span {
+            color: #000000 !important;
         }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏭 Recorder NB1")
+# แสดงชื่อโปรแกรมหลัก
+st.title("🏭 Recorder NB1 Furnace")
 
-# 2. ฟังก์ชันอ่านไฟล์อย่างปลอดภัย
+# 3. ฟังก์ชันอ่านไฟล์อย่างปลอดภัย
 def read_excel_safe(uploaded_file):
     file_name = uploaded_file.name.lower()
     if file_name.endswith('.csv'):
-        return pd.read_csv(uploaded_file, header=None, low_memory=False)
+        encodings = ['cp932', 'shift_jis', 'utf-8-sig', 'utf-8', 'tis-620', 'latin1']
+        for enc in encodings:
+            try:
+                uploaded_file.seek(0)
+                return pd.read_csv(uploaded_file, header=None, low_memory=False, encoding=enc)
+            except Exception:
+                continue
+        uploaded_file.seek(0)
+        return pd.read_csv(uploaded_file, header=None, low_memory=False, encoding='utf-8', encoding_errors='ignore')
     
     try:
+        uploaded_file.seek(0)
         return pd.read_excel(uploaded_file, header=None, engine='openpyxl')
     except Exception:
         try:
+            uploaded_file.seek(0)
             return pd.read_excel(uploaded_file, header=None, engine='xlrd')
         except Exception:
+            uploaded_file.seek(0)
             return pd.read_excel(uploaded_file, header=None)
 
-# 3. ฟังก์ชันสแกนและดึงข้อมูลอัจฉริยะ
+# 4. ฟังก์ชันสแกนและดึงข้อมูลอัจฉริยะ
 def parse_single_file(uploaded_file):
     raw_df = read_excel_safe(uploaded_file)
 
@@ -142,7 +224,9 @@ def parse_single_file(uploaded_file):
         return matched_cols[-1]
 
     df = pd.DataFrame()
-    df["DateTime"] = pd.to_datetime(data_df[0].astype(str) + " " + data_df[1].astype(str), errors="coerce")
+    col0_str = data_df[0].astype(str)
+    col1_str = data_df[1].astype(str) if data_df.shape[1] > 1 else ""
+    df["DateTime"] = pd.to_datetime(col0_str + " " + col1_str, errors="coerce")
 
     def extract_series(col_idx, min_val=-150.0, max_val=15000.0):
         if col_idx is not None and col_idx < data_df.shape[1]:
@@ -209,7 +293,7 @@ def process_multiple_files(uploaded_files):
     full_df = full_df.drop_duplicates(subset=["DateTime"]).sort_values("DateTime").reset_index(drop=True)
     return full_df, logs
 
-# 4. ฟังก์ชันตกแต่งสไตล์กราฟ
+# 5. ฟังก์ชันตกแต่งสไตล์กราฟ
 def apply_industrial_style(fig, y_title, y_range=None, is_dual_axis=False):
     layout_args = dict(
         template="plotly_dark",
@@ -265,7 +349,7 @@ uploaded_files = st.sidebar.file_uploader(
     accept_multiple_files=True
 )
 
-# 5. ส่วนแสดงผลหลัก
+# 6. ส่วนแสดงผลหลัก
 if uploaded_files:
     try:
         raw_df, channel_logs = process_multiple_files(uploaded_files)
@@ -382,15 +466,32 @@ if uploaded_files:
             apply_industrial_style(fig5, "Dew Point (°Cdp)", y_range=[-100, 10])
             st.plotly_chart(fig5, use_container_width=True)
 
-        with st.expander("📋 ตรวจสอบและดาวน์โหลดตารางข้อมูลรวมเรียงตามเวลา"):
+        # ส่วนตรวจสอบและเลือกดาวน์โหลด CSV
+        with st.expander("📋 ตรวจสอบและเลือกดาวน์โหลดตารางข้อมูล CSV"):
             st.dataframe(df)
-            csv_data = df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 ดาวน์โหลดข้อมูลที่รวมกันแล้วเป็น CSV",
-                data=csv_data,
-                file_name="combined_furnace_data.csv",
-                mime="text/csv"
-            )
+            
+            st.markdown("---")
+            st.markdown("##### 📥 ตัวเลือกการดาวน์โหลดไฟล์ CSV")
+            
+            col_opt1, col_opt2 = st.columns([2, 1])
+            with col_opt1:
+                custom_filename = st.text_input(
+                    "ตั้งชื่อไฟล์ดาวน์โหลด:", 
+                    value="combined_furnace_data.csv"
+                )
+                if not custom_filename.endswith('.csv'):
+                    custom_filename += '.csv'
+                    
+            with col_opt2:
+                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                csv_bytes = df.to_csv(index=False).encode('utf-8-sig', errors='ignore')
+                st.download_button(
+                    label="📄 ดาวน์โหลดไฟล์ CSV",
+                    data=csv_bytes,
+                    file_name=custom_filename,
+                    mime="text/csv",
+                    use_container_width=True
+                )
 
     except Exception as e:
         st.error(f"❌ เกิดข้อผิดพลาดในการประมวลผลไฟล์: {e}")
